@@ -48,6 +48,14 @@
     "precipitation_unit": "inch",
     "timeout_seconds": 10.0
   },
+  "web_search": {
+    "enabled": true,
+    "provider": "duckduckgo",
+    "max_results": 5,
+    "timeout_seconds": 8.0,
+    "region": "us-en",
+    "safesearch": "moderate"
+  },
   "conversation": {
     "session_ttl_minutes": 30,
     "max_context_tokens": 2400

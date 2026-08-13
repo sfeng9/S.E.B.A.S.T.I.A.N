@@ -16,6 +16,7 @@ Current features:
 - Local Windows time, date, and day-of-week tools
 - Location-aware time and weather for home or arbitrary spoken places
 - Current conditions plus seven-day forecasts from Open-Meteo without an API key
+- Free live web search through DuckDuckGo without an API key
 - Gmail reading, Google Calendar management, and automatic pre-event reminders
 - Idle GPU model release for long-running wake-word operation
 - Inactivity-based sessions with bounded rolling context
@@ -28,7 +29,7 @@ Current features:
 - A microphone and an audio output device
 - An NVIDIA GPU for the default Faster Whisper settings, or use the CPU settings
   in [CPU Speech Recognition](#cpu-speech-recognition)
-- Internet access for initial package/model downloads and live weather
+- Internet access for initial package/model downloads, live weather, and web search
 
 All normal assistant processing is local. Weather and explicit place-name lookup
 call Open-Meteo; home time/date uses the configured timezone without a network call.
@@ -267,7 +268,69 @@ Test real tool selection and responses:
 Use `--debug` to see selected tools and parsed results. Coordinates are not
 written to logs.
 
-## 9. Connect Gmail and Google Calendar
+## 9. Configure Web Search
+
+Sebastian uses the maintained [`ddgs`](https://pypi.org/project/ddgs/) package to
+search DuckDuckGo without an API key. Search is isolated behind a provider
+interface, so a future SearXNG or paid provider can replace it without changing
+the assistant or its tool loop.
+
+Shared defaults are in `config/assistant.json`:
+
+```json
+{
+  "web_search": {
+    "enabled": true,
+    "provider": "duckduckgo",
+    "max_results": 5,
+    "timeout_seconds": 8.0,
+    "region": "us-en",
+    "safesearch": "moderate"
+  }
+}
+```
+
+Override these values in the ignored `config/assistant.local.json` when needed.
+The `web_search` tool accepts a public `query` and an optional `max_results` from
+1 through 10, then returns structured `title`, `url`, `snippet`, and `source`
+fields. It never sends raw HTML to Ollama and does not fetch full pages.
+
+Sebastian answers stable questions such as "What is photosynthesis?" from the
+local LLM. Current or changing questions such as "What's the latest NVIDIA
+driver?" use web search. Strong freshness signals are enforced by the tool loop,
+while the system prompt handles semantic cases that do not use exact keywords.
+Weather, time, Gmail, Calendar, and reminders continue using their dedicated
+tools. Search snippets are summarized for speech; URLs are not spoken unless you
+ask.
+
+Only lightweight source metadata from the latest successful search remains in
+the active session. Ask "Which source said that?" to hear the publication names
+without URLs or metadata. A manual reset
+or normal session TTL expiration clears it. Web results are explicitly marked as
+untrusted data: Ollama is instructed to use them only as evidence and ignore any
+instructions embedded in titles or snippets. Private-looking data that was not
+explicitly present in the user's public-search request is blocked, and Gmail or
+Calendar requests are not exposed to the web tool.
+
+Test the provider directly:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_web_search.py "latest stable Python release" --max-results 3
+.\.venv\Scripts\python.exe .\tools\test_web_assistant.py
+```
+
+The second command requires Ollama and verifies that a stable question stays
+local, a current question uses `web_search`, and a source follow-up uses
+`get_last_web_sources`.
+
+DuckDuckGo search is free but unofficial and may occasionally time out, return
+incomplete results, rate-limit requests, or change behavior without notice.
+Sebastian tries DuckDuckGo first, then makes one no-key `ddgs` automatic-backend
+fallback. If both fail, it returns a short failure response and keeps the main
+assistant loop running. It does not claim live facts were verified after a failed
+search.
+
+## 10. Connect Gmail and Google Calendar
 
 Sebastian uses Google's official installed-app OAuth flow and keeps Gmail and
 Calendar authorization in separate least-privilege token files. Gmail is read-only;
@@ -527,7 +590,7 @@ The push-to-talk scripts are not persistent background schedulers and do not run
 Calendar synchronization. Keep the wake assistant running for reminders to stay
 synchronized and fire on time.
 
-## 10. GPU and Session Configuration
+## 11. GPU and Session Configuration
 
 The shared defaults in `config/assistant.json` are:
 
@@ -582,7 +645,7 @@ Verify model lifetimes with a short temporary Ollama timeout:
 The temporary `5s` value is used only by the diagnostic request; normal Sebastian
 requests continue using the configured `5m` value.
 
-## 11. Run Sebastian
+## 12. Run Sebastian
 
 Test a push-to-talk conversation before enabling the wake word:
 
@@ -607,15 +670,18 @@ stop. Useful variants:
 ```
 
 Try: "What time is it?", "What's today's date?", "What's it like outside?",
-"What's my plan today?", "Any important emails?", or "Remind me in two minutes."
+"What's the latest news about NVIDIA?", "What's my plan today?", "Any important
+emails?", or "Remind me in two minutes."
 
-## 12. Tests
+## 13. Tests
 
 Run deterministic tests without a microphone, Ollama, or internet connection:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe .\tools\test_web_search.py "latest stable Python release"
+.\.venv\Scripts\python.exe .\tools\test_web_assistant.py
 .\.venv\Scripts\python.exe .\tools\test_session_behavior.py
 .\.venv\Scripts\python.exe .\tools\test_google_failure_routing.py
 ```
@@ -624,7 +690,9 @@ The deterministic suite covers configuration merging, time/date data, weather
 parsing and failures, Gmail metadata/body boundaries, Calendar payloads and
 confirmation rules, persistent reminder recovery, LLM tool loops, automatic
 end-of-speech detection, 12-turn retention, context trimming, session TTL/reset,
-and STT load/unload/reload. Live Gmail and Calendar tests require your OAuth setup.
+web routing/provider failures/source context/privacy blocking, and STT
+load/unload/reload. The web diagnostic requires internet access. Live Gmail and
+Calendar tests require your OAuth setup.
 The Google failure diagnostic refuses to run after either real token file exists.
 
 To watch VRAM manually, open a second PowerShell window while Sebastian runs:
@@ -665,6 +733,11 @@ more important than idle VRAM.
 
 **Weather unavailable:** verify the two coordinates, internet access, and
 timezone. Time and date still work when weather fails.
+
+**Web search unavailable:** verify internet access and rerun
+`tools/test_web_search.py`. Free DuckDuckGo access can fail transiently or apply
+rate limits; wait briefly before retrying. Stable local knowledge and all
+non-web tools remain available.
 
 **Google credentials missing:** place the downloaded Desktop OAuth JSON at
 `secrets/google/client_secret.json`, then run `tools/authenticate_google.py`.
@@ -709,6 +782,6 @@ tests/                   Deterministic automated tests
 tools/                   Setup, diagnostics, and runnable entry points
 voice_assistant/audio/   Audio devices, STT, TTS, wake word, end-of-speech
 voice_assistant/assistant/ Conversation and tool-calling loop
-voice_assistant/integrations/ External services such as Open-Meteo
+voice_assistant/integrations/ External services such as Open-Meteo and web search
 voice_assistant/tools/   Local assistant tools such as time and date
 ```

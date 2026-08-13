@@ -8,5 +8,6 @@ openwakeword==0.6.0
 webrtcvad-wheels>=2.0.14,<3
 tzdata>=2024.1
 dateparser>=1.2,<2
+ddgs>=9.10,<10
 google-api-python-client>=2,<3
 google-auth-oauthlib>=1.2,<2

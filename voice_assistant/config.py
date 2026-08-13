@@ -89,6 +89,16 @@ class WeatherConfig:
 
 
 @dataclass(frozen=True)
+class WebSearchConfig:
+    enabled: bool
+    provider: str
+    max_results: int
+    timeout_seconds: float
+    region: str
+    safesearch: str
+
+
+@dataclass(frozen=True)
 class ConversationConfig:
     session_ttl_minutes: float
     max_context_tokens: int
@@ -145,6 +155,7 @@ class AssistantConfig:
     command_recording: CommandRecordingConfig
     home_location: LocationConfig
     weather: WeatherConfig
+    web_search: WebSearchConfig
     conversation: ConversationConfig
     resources: ResourceConfig
     google: GoogleConfig
@@ -181,6 +192,7 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
     command_recording = raw.get("command_recording", {})
     home_location = raw.get("home_location", {})
     weather = raw.get("weather", {})
+    web_search = raw.get("web_search", {})
     conversation = raw.get("conversation", {})
     resources = raw.get("resources", {})
     google = raw.get("google", {})
@@ -256,6 +268,16 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
             wind_speed_unit=str(weather.get("wind_speed_unit", "mph")),
             precipitation_unit=str(weather.get("precipitation_unit", "inch")),
             timeout_seconds=float(weather.get("timeout_seconds", 10.0)),
+        ),
+        web_search=WebSearchConfig(
+            enabled=bool(web_search.get("enabled", True)),
+            provider=str(web_search.get("provider", "duckduckgo")),
+            max_results=max(1, min(10, int(web_search.get("max_results", 5)))),
+            timeout_seconds=max(
+                1.0, min(30.0, float(web_search.get("timeout_seconds", 8.0)))
+            ),
+            region=str(web_search.get("region", "us-en")),
+            safesearch=str(web_search.get("safesearch", "moderate")),
         ),
         conversation=ConversationConfig(
             session_ttl_minutes=max(
