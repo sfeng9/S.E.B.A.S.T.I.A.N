@@ -1,0 +1,56 @@
+# Python environments, caches, coverage, and builds
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Machine-specific configuration and credentials
+config/*.local.json
+.env
+.env.*
+!.env.example
+secrets/
+credentials*.json
+client_secret*.json
+token*.json
+data/*.sqlite3
+data/*.sqlite3-*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Downloaded or trained AI models
+data/voices/*
+!data/voices/.gitkeep
+data/wake_words/*
+!data/wake_words/.gitkeep
+*.onnx
+*.tflite
+*.gguf
+*.safetensors
+*.pt
+*.pth
+
+# Generated audio, logs, and temporary work
+outputs/*
+!outputs/.gitkeep
+logs/
+*.log
+work/
+
+# Editors and Windows metadata
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store

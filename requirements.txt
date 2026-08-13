@@ -1,0 +1,12 @@
+numpy>=1.26
+sounddevice>=0.4.6
+faster-whisper>=1.2,<2
+nvidia-cublas-cu12==12.8.4.1; platform_system == "Windows"
+nvidia-cudnn-cu12==9.17.1.4; platform_system == "Windows"
+piper-tts==1.6.0
+openwakeword==0.6.0
+webrtcvad-wheels>=2.0.14,<3
+tzdata>=2024.1
+dateparser>=1.2,<2
+google-api-python-client>=2,<3
+google-auth-oauthlib>=1.2,<2

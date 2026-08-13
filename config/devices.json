@@ -1,0 +1,14 @@
+{
+  "microphone": {
+    "name_query": "CHANGE_ME_MICROPHONE",
+    "device_id": null,
+    "sample_rate": 48000,
+    "channels": 1
+  },
+  "speaker": {
+    "name_query": "CHANGE_ME_SPEAKER",
+    "device_id": null,
+    "sample_rate": 48000,
+    "channels": 2
+  }
+}

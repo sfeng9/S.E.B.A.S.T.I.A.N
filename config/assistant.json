@@ -1,0 +1,87 @@
+{
+  "llm": {
+    "provider": "ollama",
+    "model": "qwen3:8b",
+    "base_url": "http://127.0.0.1:11434",
+    "temperature": 0.2,
+    "context_window": 4096,
+    "keep_alive": "5m"
+  },
+  "speech_to_text": {
+    "model": "small.en",
+    "device": "cuda",
+    "compute_type": "int8_float16",
+    "language": "en",
+    "beam_size": 1
+  },
+  "text_to_speech": {
+    "provider": "piper",
+    "voice": "en_US-ryan-medium",
+    "model_path": "data/voices/en_US-ryan-medium.onnx",
+    "volume": 1.0,
+    "length_scale": 1.0
+  },
+  "wake_word": {
+    "phrase": "Sebastian",
+    "model_path": "data/wake_words/sebastian.onnx",
+    "threshold": 0.5,
+    "vad_threshold": 0.0,
+    "frame_ms": 80
+  },
+  "command_recording": {
+    "max_seconds": 12.0,
+    "speech_start_timeout": 5.0,
+    "silence_seconds": 0.9,
+    "pre_roll_ms": 300,
+    "frame_ms": 30,
+    "vad_mode": 2
+  },
+  "home_location": {
+    "latitude": null,
+    "longitude": null,
+    "name": null,
+    "timezone": null
+  },
+  "weather": {
+    "temperature_unit": "fahrenheit",
+    "wind_speed_unit": "mph",
+    "precipitation_unit": "inch",
+    "timeout_seconds": 10.0
+  },
+  "conversation": {
+    "session_ttl_minutes": 30,
+    "max_context_tokens": 2400
+  },
+  "resources": {
+    "stt_idle_unload_minutes": 15,
+    "maintenance_interval_seconds": 5
+  },
+  "google": {
+    "credentials_path": "secrets/google/client_secret.json",
+    "gmail_token_path": "secrets/google/gmail_token.json",
+    "calendar_token_path": "secrets/google/calendar_token.json"
+  },
+  "calendar": {
+    "calendar_id": "primary",
+    "default_event_duration_minutes": 60,
+    "confirm_updates": true,
+    "confirm_deletes": true,
+    "max_results": 20
+  },
+  "gmail": {
+    "max_results": 5,
+    "important_candidate_limit": 12,
+    "spoken_result_limit": 2,
+    "list_snippet_character_limit": 140,
+    "detail_body_character_limit": 6000
+  },
+  "reminders": {
+    "database_path": "data/reminders.sqlite3",
+    "poll_interval_seconds": 5,
+    "calendar_sync_enabled": true,
+    "calendar_reminder_minutes_before": 30,
+    "calendar_sync_interval_seconds": 300,
+    "calendar_sync_lookahead_hours": 168,
+    "calendar_sync_max_results": 2500
+  }
+}
