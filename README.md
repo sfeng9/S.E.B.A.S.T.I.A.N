@@ -169,6 +169,9 @@ included in this repository at:
 data/wake_words/sebastian.onnx
 ```
 
+The bundled `sebastian.onnx` model was downloaded from the
+[Wake Word Community Library](https://openwakeword.com/library).
+
 No separate wake-word download is required for the default Sebastian setup. Run
 the shared runtime setup and detection test below. You can instead use another
 pretrained wake word or train a custom model.
