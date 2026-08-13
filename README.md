@@ -104,12 +104,13 @@ Test both devices:
 Listen to `outputs/mic_test.wav`. To test a device without editing config:
 
 ```powershell
-.\.venv\Scripts\python.exe .\tools\test_microphone.py --mic "TONOR" --seconds 5
-.\.venv\Scripts\python.exe .\tools\test_speaker.py --speaker "BlackShark"
+.\.venv\Scripts\python.exe .\tools\test_microphone.py --mic "YOUR MICROPHONE" --seconds 5
+.\.venv\Scripts\python.exe .\tools\test_speaker.py --speaker "YOUR SPEAKER"
 ```
 
-When the TONOR G11 arrives, change only `microphone.name_query` to a unique part
-of the name reported by `list_audio_devices.py`.
+Replace the placeholders with unique parts of the device names reported by
+`list_audio_devices.py`. You can change either device later without changing the
+other one.
 
 ## 5. Speech Recognition
 
@@ -161,11 +162,15 @@ voice, download it and override `text_to_speech.voice` and
 
 ## 7. Install or Create a Wake Word
 
-The configured phrase is **Sebastian**, with its model expected at:
+The configured wake phrase is **Sebastian**, with its model expected at:
 
 ```text
 data/wake_words/sebastian.onnx
 ```
+
+You can use another wake word or train a custom one through the official
+openWakeWord training workflow. The configured phrase and model path must match
+the wake-word model you choose.
 
 ### Use an Existing Model
 
@@ -187,9 +192,10 @@ itself must have been trained for the desired trigger phrase.
 
 ### Train a Custom Model
 
-Follow [docs/train-sebastian.md](docs/train-sebastian.md). It uses the official
-openWakeWord Colab and includes the current Colab `webrtcvad` fix. Change the
-model name and target phrase in the notebook if you choose a different trigger.
+Follow [docs/train-sebastian.md](docs/train-sebastian.md). It links to the
+[official openWakeWord training Colab](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing)
+and includes the current Colab `webrtcvad` fix. Change the model name and target
+phrase in the notebook if you choose a different trigger.
 
 Prepare openWakeWord's shared runtime files and test detection:
 
