@@ -35,6 +35,7 @@ data/voices/*
 data/wake_words/*
 !data/wake_words/.gitkeep
 *.onnx
+!data/wake_words/sebastian.onnx
 *.tflite
 *.gguf
 *.safetensors

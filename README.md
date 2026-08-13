@@ -162,26 +162,28 @@ voice, download it and override `text_to_speech.voice` and
 
 ## 7. Install or Create a Wake Word
 
-The configured wake phrase is **Sebastian**, with its model expected at:
+The configured wake phrase is **Sebastian**. Its openWakeWord-compatible model is
+included in this repository at:
 
 ```text
 data/wake_words/sebastian.onnx
 ```
 
-You can use another wake word or train a custom one through the official
-openWakeWord training workflow. The configured phrase and model path must match
-the wake-word model you choose.
+No separate wake-word download is required for the default Sebastian setup. Run
+the shared runtime setup and detection test below. You can instead use another
+pretrained wake word or train a custom model.
 
-### Use an Existing Model
+### Use Another Wake Word
 
-Download an openWakeWord-compatible ONNX model from a source you trust, check its
-license, and put it in `data/wake_words/`. Either rename it to `sebastian.onnx` or
-set its relative path in `config/assistant.local.json`:
+Choose a model from the
+[official openWakeWord pretrained model list](https://github.com/dscripka/openWakeWord#pre-trained-models)
+or another trusted source. Download its ONNX file into `data/wake_words/`, then
+set its phrase and relative path in `config/assistant.local.json`:
 
 ```json
 {
   "wake_word": {
-    "phrase": "Sebastian",
+    "phrase": "YOUR WAKE PHRASE",
     "model_path": "data/wake_words/your-model.onnx"
   }
 }
@@ -194,8 +196,10 @@ itself must have been trained for the desired trigger phrase.
 
 Follow [docs/train-sebastian.md](docs/train-sebastian.md). It links to the
 [official openWakeWord training Colab](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing)
-and includes the current Colab `webrtcvad` fix. Change the model name and target
-phrase in the notebook if you choose a different trigger.
+and includes the current Colab `webrtcvad` fix. Enter Sebastian or any other
+phrase as the target, download the resulting ONNX model, place it in
+`data/wake_words/`, and update `wake_word.phrase` and `wake_word.model_path` to
+match.
 
 Prepare openWakeWord's shared runtime files and test detection:
 
@@ -672,7 +676,7 @@ Weather, time, and local reminders continue working when Google is unavailable.
 
 - `.venv`, Python caches, build output, coverage, and editor files
 - Downloaded/trained model files (`.onnx`, `.tflite`, `.gguf`, `.safetensors`,
-  `.pt`, and `.pth`)
+  `.pt`, and `.pth`), except the bundled `data/wake_words/sebastian.onnx`
 - Generated WAV files, logs, and temporary work
 - `config/*.local.json`, local `.env` files, tokens, private keys, credentials,
   and secret directories
@@ -694,7 +698,7 @@ and avoid redistributing files with unknown licenses.
 ```text
 config/                  Shared defaults plus ignored local overrides
 data/voices/             Downloaded Piper voices (ignored)
-data/wake_words/         Downloaded or trained wake models (ignored)
+data/wake_words/         Bundled Sebastian model; other wake models ignored
 data/reminders.sqlite3   Persistent local reminders (ignored)
 docs/                    Training notes
 outputs/                 Generated recordings and speech (ignored)
