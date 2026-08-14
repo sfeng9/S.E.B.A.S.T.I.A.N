@@ -99,6 +99,13 @@ class LocalConfigTests(unittest.TestCase):
         self.assertEqual(config.reminders.calendar_sync_interval_seconds, 300.0)
         self.assertEqual(config.reminders.calendar_sync_lookahead_hours, 168)
         self.assertEqual(config.reminders.calendar_sync_max_results, 2500)
+        self.assertTrue(config.pc_control.enabled)
+        self.assertEqual(config.pc_control.confirmation_timeout_seconds, 30.0)
+        self.assertEqual(config.pc_control.volume_step_percent, 10)
+        self.assertEqual(
+            [app.identifier for app in config.pc_control.applications],
+            ["chrome", "spotify", "discord", "steam"],
+        )
 
     def test_legacy_weather_location_still_loads(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

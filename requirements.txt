@@ -11,3 +11,6 @@ dateparser>=1.2,<2
 ddgs>=9.10,<10
 google-api-python-client>=2,<3
 google-auth-oauthlib>=1.2,<2
+psutil>=6,<8
+pycaw>=20240210
+Pillow>=10,<13

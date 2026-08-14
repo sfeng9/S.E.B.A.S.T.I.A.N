@@ -91,5 +91,46 @@
     "calendar_sync_interval_seconds": 300,
     "calendar_sync_lookahead_hours": 168,
     "calendar_sync_max_results": 2500
+  },
+  "pc_control": {
+    "enabled": true,
+    "confirmation_timeout_seconds": 30,
+    "graceful_close_timeout_seconds": 2,
+    "screenshot_directory": "data/screenshots",
+    "volume_step_percent": 10,
+    "applications": [
+      {
+        "id": "chrome",
+        "aliases": ["chrome", "google chrome", "browser"],
+        "executable_names": ["chrome.exe"],
+        "process_names": ["chrome.exe"],
+        "start_menu_names": ["Google Chrome", "Chrome"],
+        "path": null
+      },
+      {
+        "id": "spotify",
+        "aliases": ["spotify", "music"],
+        "executable_names": ["spotify.exe"],
+        "process_names": ["spotify.exe"],
+        "start_menu_names": ["Spotify"],
+        "path": null
+      },
+      {
+        "id": "discord",
+        "aliases": ["discord"],
+        "executable_names": ["discord.exe"],
+        "process_names": ["discord.exe"],
+        "start_menu_names": ["Discord"],
+        "path": null
+      },
+      {
+        "id": "steam",
+        "aliases": ["steam"],
+        "executable_names": ["steam.exe"],
+        "process_names": ["steam.exe"],
+        "start_menu_names": ["Steam"],
+        "path": null
+      }
+    ]
   }
 }

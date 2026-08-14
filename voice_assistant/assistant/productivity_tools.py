@@ -184,6 +184,15 @@ class ProductivityToolHandler:
         self._email_spoken_override = None
         self._calendar_spoken_override = None
 
+    def clear_pending_confirmation(self) -> None:
+        if self._pending is not None:
+            logger.info("Cancelled pending Calendar action in favor of a newer action.")
+        self._pending = None
+
+    @property
+    def has_pending_confirmation(self) -> bool:
+        return self._pending is not None
+
     def tool_requirement(
         self,
         prompt: str,

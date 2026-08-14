@@ -110,7 +110,42 @@ class RequiredWebRouter(FakeToolRouter):
         }
 
 
+class PreprocessedConfirmationRouter(FakeToolRouter):
+    def begin_turn(self) -> None:
+        pass
+
+    def preprocess_tool_call(self, prompt, history):
+        del history
+        return (
+            ("confirm_pc_action", {"confirm": False})
+            if prompt.strip().casefold() == "no."
+            else None
+        )
+
+    def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append((name, arguments))
+        return {"ok": True, "cancelled": True}
+
+    def spoken_override_for(self, tools):
+        return "Okay, I won't shut down the computer."
+
+
 class LlmToolLoopTests(unittest.TestCase):
+    def test_direct_confirmation_executes_without_an_ollama_round_trip(self) -> None:
+        client = OllamaClient(load_assistant_config().llm)
+        router = PreprocessedConfirmationRouter()
+
+        with patch.object(client, "_post_json") as post:
+            reply = client.chat("No.", tool_executor=router)
+
+        post.assert_not_called()
+        self.assertEqual(
+            router.calls,
+            [("confirm_pc_action", {"confirm": False})],
+        )
+        self.assertEqual(reply.tool_calls, ("confirm_pc_action",))
+        self.assertEqual(reply.text, "Okay, I won't shut down the computer.")
+
     def test_web_result_reaches_model_before_current_answer(self) -> None:
         client = OllamaClient(load_assistant_config().llm)
         router = RequiredWebRouter()

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from voice_assistant.assistant.productivity_tools import ProductivityToolHandler
+from voice_assistant.assistant.pc_control_tools import PcControlToolHandler
 from voice_assistant.config import AssistantConfig
 from voice_assistant.integrations.location import (
     LocationAmbiguousError,
@@ -87,6 +88,11 @@ DEDICATED_TOOL_CUE = re.compile(
 )
 EMAIL_ADDRESS = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 LONG_NUMBER = re.compile(r"(?<!\d)\d{7,}(?!\d)")
+DIRECT_CONFIRMATION = re.compile(
+    r"^\s*(?P<answer>yes|yeah|yep|confirm|do it|go ahead|please do|"
+    r"no|nope|don't|do not|cancel)(?:\s+(?:it|that|please))?[.!]?\s*$",
+    re.IGNORECASE,
+)
 
 
 def _tool_schema(
@@ -177,6 +183,7 @@ class AssistantToolRouter:
         now_provider: Callable[[], datetime] | None = None,
         productivity: ProductivityToolHandler | None = None,
         search_provider: SearchProvider | None = None,
+        pc_control: PcControlToolHandler | None = None,
     ) -> None:
         self._locations = location_resolver or LocationResolver(
             config.home_location,
@@ -185,6 +192,10 @@ class AssistantToolRouter:
         self._weather = weather_client or OpenMeteoClient(config.weather)
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._productivity = productivity or ProductivityToolHandler(
+            config,
+            now_provider=self._now_provider,
+        )
+        self._pc_control = pc_control or PcControlToolHandler(
             config,
             now_provider=self._now_provider,
         )
@@ -209,7 +220,12 @@ class AssistantToolRouter:
             if self._web_search_config.enabled
             else ()
         )
-        return (*TOOL_SCHEMAS, *self._productivity.schemas, *web_schemas)
+        return (
+            *TOOL_SCHEMAS,
+            *self._productivity.schemas,
+            *self._pc_control.schemas,
+            *web_schemas,
+        )
 
     def schemas_for(
         self,
@@ -222,6 +238,27 @@ class AssistantToolRouter:
         ).casefold()
         selected = list(TOOL_SCHEMAS)
         productivity = list(self._productivity.schemas)
+        pc_tools = list(self._pc_control.schemas)
+        pc_requirement = self._pc_control.tool_requirement(prompt, history)
+        pc_required_names = {
+            str(name)
+            for name in (
+                pc_requirement.get("tools", ())
+                if isinstance(pc_requirement, dict)
+                else ()
+            )
+        }
+        if pc_required_names:
+            selected.extend(
+                item
+                for item in pc_tools
+                if item["function"]["name"] in pc_required_names
+            )
+            logger.debug(
+                "Restricting PC tools to required action: %s",
+                ", ".join(sorted(pc_required_names)),
+            )
+            return tuple(selected)
         requirement = self._productivity.tool_requirement(prompt, history)
         required_names = {
             str(name)
@@ -263,10 +300,13 @@ class AssistantToolRouter:
                     item for item in productivity
                     if item["function"]["name"] in names
                 )
+        pc_request = self._pc_control.matches_prompt(prompt, history)
+        if pc_request:
+            selected.extend(pc_tools)
         if self._web_search_config.enabled:
             if SOURCE_FOLLOW_UP.search(prompt):
                 selected.append(LAST_WEB_SOURCES_SCHEMA)
-            elif not _is_dedicated_or_private_request(prompt):
+            elif not pc_request and not _is_dedicated_or_private_request(prompt):
                 selected.append(WEB_SEARCH_SCHEMA)
         logger.debug("Exposing %d tools for current request.", len(selected))
         return tuple(selected)
@@ -277,6 +317,7 @@ class AssistantToolRouter:
 
     def reset_session_context(self) -> None:
         self._productivity.reset_session_context()
+        self._pc_control.reset_session_context()
         self._latest_web_sources.clear()
         self._source_spoken_override = None
         self._current_prompt = ""
@@ -284,13 +325,41 @@ class AssistantToolRouter:
 
     def begin_turn(self) -> None:
         self._productivity.begin_turn()
+        self._pc_control.begin_turn()
         self._source_spoken_override = None
+
+    def preprocess_tool_call(
+        self,
+        prompt: str,
+        history: Sequence[dict[str, Any]],
+    ) -> tuple[str, dict[str, Any]] | None:
+        del history
+        match = DIRECT_CONFIRMATION.match(prompt)
+        if match is None:
+            return None
+        confirmed = match.group("answer").casefold() in {
+            "yes",
+            "yeah",
+            "yep",
+            "confirm",
+            "do it",
+            "go ahead",
+            "please do",
+        }
+        if self._pc_control.has_pending_confirmation:
+            return "confirm_pc_action", {"confirm": confirmed}
+        if self._productivity.has_pending_confirmation:
+            return "confirm_calendar_action", {"confirm": confirmed}
+        return None
 
     def tool_requirement(
         self,
         prompt: str,
         history: Sequence[dict[str, Any]],
     ) -> dict[str, object] | None:
+        pc_requirement = self._pc_control.tool_requirement(prompt, history)
+        if pc_requirement is not None:
+            return pc_requirement
         productivity_requirement = self._productivity.tool_requirement(prompt, history)
         if productivity_requirement is not None:
             return productivity_requirement
@@ -318,6 +387,9 @@ class AssistantToolRouter:
         productivity_override = self._productivity.spoken_override_for(called_tools)
         if productivity_override:
             return productivity_override
+        pc_override = self._pc_control.spoken_override_for(called_tools)
+        if pc_override:
+            return pc_override
         if "get_last_web_sources" in called_tools:
             return self._source_spoken_override
         return None
@@ -337,8 +409,15 @@ class AssistantToolRouter:
                 return self._web_search(arguments)
             if name == "get_last_web_sources":
                 return self._get_last_web_sources()
+            pc_result = self._pc_control.execute(name, arguments)
+            if pc_result is not None:
+                if pc_result.get("confirmation_required"):
+                    self._productivity.clear_pending_confirmation()
+                return pc_result
             productivity_result = self._productivity.execute(name, arguments)
             if productivity_result is not None:
+                if productivity_result.get("confirmation_required"):
+                    self._pc_control.clear_pending_confirmation()
                 return productivity_result
         except LocationError as exc:
             return self._location_error(exc)

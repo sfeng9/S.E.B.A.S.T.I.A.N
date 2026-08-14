@@ -147,6 +147,26 @@ class ReminderConfig:
 
 
 @dataclass(frozen=True)
+class ApplicationConfig:
+    identifier: str
+    aliases: tuple[str, ...]
+    executable_names: tuple[str, ...]
+    process_names: tuple[str, ...]
+    start_menu_names: tuple[str, ...]
+    configured_path: Path | None
+
+
+@dataclass(frozen=True)
+class PcControlConfig:
+    enabled: bool
+    confirmation_timeout_seconds: float
+    graceful_close_timeout_seconds: float
+    screenshot_directory: Path
+    volume_step_percent: int
+    applications: tuple[ApplicationConfig, ...]
+
+
+@dataclass(frozen=True)
 class AssistantConfig:
     llm: LlmConfig
     speech_to_text: SpeechToTextConfig
@@ -162,6 +182,7 @@ class AssistantConfig:
     calendar: CalendarConfig
     gmail: GmailConfig
     reminders: ReminderConfig
+    pc_control: PcControlConfig
 
 
 def _endpoint_from_dict(data: dict[str, Any], default_rate: int) -> AudioEndpointConfig:
@@ -199,6 +220,7 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
     calendar = raw.get("calendar", {})
     gmail = raw.get("gmail", {})
     reminders = raw.get("reminders", {})
+    pc_control = raw.get("pc_control", {})
     tts_model_path = Path(
         str(text_to_speech.get("model_path", "data/voices/en_US-ryan-medium.onnx"))
     )
@@ -366,6 +388,31 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
                 ),
             ),
         ),
+        pc_control=PcControlConfig(
+            enabled=bool(pc_control.get("enabled", True)),
+            confirmation_timeout_seconds=max(
+                5.0,
+                min(
+                    300.0,
+                    float(pc_control.get("confirmation_timeout_seconds", 30.0)),
+                ),
+            ),
+            graceful_close_timeout_seconds=max(
+                0.25,
+                min(
+                    10.0,
+                    float(pc_control.get("graceful_close_timeout_seconds", 2.0)),
+                ),
+            ),
+            screenshot_directory=_project_path(
+                pc_control.get("screenshot_directory", "data/screenshots")
+            ),
+            volume_step_percent=max(
+                1,
+                min(100, int(pc_control.get("volume_step_percent", 10))),
+            ),
+            applications=_applications_from_config(pc_control.get("applications")),
+        ),
     )
 
 
@@ -383,6 +430,81 @@ def _optional_string(value: Any) -> str | None:
 def _project_path(value: Any) -> Path:
     path = Path(str(value))
     return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _applications_from_config(value: Any) -> tuple[ApplicationConfig, ...]:
+    if value is None:
+        value = _DEFAULT_APPLICATIONS
+    if not isinstance(value, list):
+        raise ValueError("pc_control.applications must be a JSON array.")
+
+    applications: list[ApplicationConfig] = []
+    identifiers: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("Each pc_control application must be a JSON object.")
+        identifier = str(item.get("id", "")).strip().casefold()
+        if not identifier or not identifier.replace("_", "").isalnum():
+            raise ValueError(f"Invalid pc_control application id: {identifier!r}")
+        if identifier in identifiers:
+            raise ValueError(f"Duplicate pc_control application id: {identifier}")
+        identifiers.add(identifier)
+
+        configured_path = _optional_string(item.get("path"))
+        applications.append(
+            ApplicationConfig(
+                identifier=identifier,
+                aliases=_string_tuple(item.get("aliases"), fallback=(identifier,)),
+                executable_names=_string_tuple(item.get("executable_names")),
+                process_names=_string_tuple(item.get("process_names")),
+                start_menu_names=_string_tuple(item.get("start_menu_names")),
+                configured_path=(
+                    _project_path(configured_path) if configured_path is not None else None
+                ),
+            )
+        )
+    return tuple(applications)
+
+
+def _string_tuple(value: Any, fallback: tuple[str, ...] = ()) -> tuple[str, ...]:
+    if value is None:
+        return fallback
+    if not isinstance(value, list):
+        raise ValueError("Application name collections must be JSON arrays.")
+    result = tuple(str(item).strip() for item in value if str(item).strip())
+    return result or fallback
+
+
+_DEFAULT_APPLICATIONS = [
+    {
+        "id": "chrome",
+        "aliases": ["chrome", "google chrome", "browser"],
+        "executable_names": ["chrome.exe"],
+        "process_names": ["chrome.exe"],
+        "start_menu_names": ["Google Chrome", "Chrome"],
+    },
+    {
+        "id": "spotify",
+        "aliases": ["spotify", "music"],
+        "executable_names": ["spotify.exe"],
+        "process_names": ["spotify.exe"],
+        "start_menu_names": ["Spotify"],
+    },
+    {
+        "id": "discord",
+        "aliases": ["discord"],
+        "executable_names": ["discord.exe"],
+        "process_names": ["discord.exe"],
+        "start_menu_names": ["Discord"],
+    },
+    {
+        "id": "steam",
+        "aliases": ["steam"],
+        "executable_names": ["steam.exe"],
+        "process_names": ["steam.exe"],
+        "start_menu_names": ["Steam"],
+    },
+]
 
 
 def _load_with_local_override(path: Path) -> dict[str, Any]:

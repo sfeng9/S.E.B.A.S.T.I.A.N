@@ -24,6 +24,7 @@ client_secret*.json
 token*.json
 data/*.sqlite3
 data/*.sqlite3-*
+data/screenshots/
 *.pem
 *.key
 *.p12

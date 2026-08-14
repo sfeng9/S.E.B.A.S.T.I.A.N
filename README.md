@@ -22,6 +22,9 @@ Current features:
 - Current conditions plus seven-day forecasts from Open-Meteo without an API key
 - Free live web search through DuckDuckGo without an API key
 - Gmail reading, Google Calendar management, and automatic pre-event reminders
+- Allowlisted Windows application, volume, media, screenshot, and lock controls
+- On-demand CPU, RAM, disk, process, NVIDIA GPU, temperature, and VRAM status
+- Expiring confirmation for shutdown, restart, logout, sleep, hibernate, and force close
 - Idle GPU model release for long-running wake-word operation
 - Inactivity-based sessions with bounded rolling context
 
@@ -649,7 +652,93 @@ Verify model lifetimes with a short temporary Ollama timeout:
 The temporary `5s` value is used only by the diagnostic request; normal Sebastian
 requests continue using the configured `5m` value.
 
-## 12. Run Sebastian
+## 12. Windows PC Control
+
+PC control is enabled by the `pc_control` section in `config/assistant.json`.
+Machine-specific executable paths belong in the ignored
+`config/assistant.local.json`, not in the shared file. The default allowlist contains
+Chrome, Spotify, Discord, and Steam:
+
+```json
+{
+  "pc_control": {
+    "enabled": true,
+    "confirmation_timeout_seconds": 30,
+    "graceful_close_timeout_seconds": 2,
+    "screenshot_directory": "data/screenshots",
+    "volume_step_percent": 10,
+    "applications": [
+      {
+        "id": "example_app",
+        "aliases": ["example", "example app"],
+        "executable_names": ["Example.exe"],
+        "process_names": ["Example.exe"],
+        "start_menu_names": ["Example App"],
+        "path": null
+      }
+    ]
+  }
+}
+```
+
+To add an app, copy the full shared `applications` array into
+`config/assistant.local.json`, append one entry, and restart Sebastian. Set `path` to
+an absolute executable or shortcut path only when automatic discovery does not find
+the app. The value is trusted local configuration; spoken requests can never supply
+an executable path.
+
+Launch discovery checks, in order:
+
+1. The configured `path`
+2. Executable names available through Windows `PATH`
+3. Windows App Paths registry entries, read-only
+4. Current-user and all-user Start Menu shortcuts
+
+Sebastian can open, gracefully close, or check configured apps; read and change the
+Windows default media-output volume; mute and unmute; send global play/pause, next,
+previous, and stop media keys; save screenshots; lock Windows; and read system,
+process, and NVIDIA GPU status. Volume control targets the Windows default media
+output and remains separate from Sebastian's configured TTS speaker.
+
+Screenshots are timestamped PNG files under `data/screenshots/` by default. They stay
+local, are ignored by Git, and are not sent to Ollama or any service.
+
+Shutdown, restart, logout, sleep, hibernate, and force-closing an app require a
+separate yes/no response within 30 seconds. A request only creates a pending action;
+it does not execute immediately. The confirmation is tied to that action and is
+cleared on session reset or expiry. Locking requires an explicit request but does not
+ask for another confirmation. Sebastian cannot unlock Windows or handle a password.
+
+There is no generic command, PowerShell, CMD, Python, registry-write, process-kill,
+or filesystem-delete tool. Application IDs are allowlisted, arguments are validated,
+critical Windows process names are protected, and PC tools are not exposed during
+web, email, Calendar, or document-information tool rounds. External content is data,
+never authorization for a PC action.
+
+New dependencies are `psutil` for on-demand system/process data, `pycaw` and its
+`comtypes` dependency for Windows default-output volume, and `Pillow` for local screen
+capture. NVIDIA status uses the driver's existing `nvidia-smi`; GPU monitoring fails
+cleanly when it is unavailable and adds no required Python package.
+
+Run safe read-only diagnostics:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_pc_control.py
+```
+
+Optional diagnostics capture one screenshot, exercise volume and restore its original
+state, or cycle an app only when it was initially closed:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_pc_control.py --screenshot
+.\.venv\Scripts\python.exe .\tools\test_pc_control.py --volume-cycle
+.\.venv\Scripts\python.exe .\tools\test_pc_control.py --app-cycle spotify
+```
+
+The app cycle never force-closes an app. Automated tests mock lock and power actions,
+so they cannot lock, sleep, restart, or shut down the development computer.
+
+## 13. Run Sebastian
 
 Test a push-to-talk conversation before enabling the wake word:
 
@@ -675,9 +764,10 @@ stop. Useful variants:
 
 Try: "What time is it?", "What's today's date?", "What's it like outside?",
 "What's the latest news about NVIDIA?", "What's my plan today?", "Any important
-emails?", or "Remind me in two minutes."
+emails?", "Open Spotify", "Set the volume to 30 percent", "What's my GPU
+temperature?", or "Remind me in two minutes."
 
-## 13. Tests
+## 14. Tests
 
 Run deterministic tests without a microphone, Ollama, or internet connection:
 
@@ -688,6 +778,8 @@ Run deterministic tests without a microphone, Ollama, or internet connection:
 .\.venv\Scripts\python.exe .\tools\test_web_assistant.py
 .\.venv\Scripts\python.exe .\tools\test_session_behavior.py
 .\.venv\Scripts\python.exe .\tools\test_google_failure_routing.py
+.\.venv\Scripts\python.exe .\tools\test_pc_control.py
+.\.venv\Scripts\python.exe .\tools\test_pc_assistant.py
 ```
 
 The deterministic suite covers configuration merging, time/date data, weather
@@ -695,7 +787,9 @@ parsing and failures, Gmail metadata/body boundaries, Calendar payloads and
 confirmation rules, persistent reminder recovery, LLM tool loops, automatic
 end-of-speech detection, 12-turn retention, context trimming, session TTL/reset,
 web routing/provider failures/source context/privacy blocking, and STT
-load/unload/reload. The web diagnostic requires internet access. Live Gmail and
+load/unload/reload. PC tests cover the allowlist, permission metadata, argument
+validation, app/volume/media/status routing, expiring confirmations, dry-run power
+safety, and external-content isolation. The web diagnostic requires internet access. Live Gmail and
 Calendar tests require your OAuth setup.
 The Google failure diagnostic refuses to run after either real token file exists.
 
@@ -750,6 +844,20 @@ non-web tools remain available.
 only the affected ignored token file first if Google reports a scope/token mismatch.
 Weather, time, and local reminders continue working when Google is unavailable.
 
+**Application not found:** verify its allowlist entry, Start Menu name, executable
+name, and process name. If discovery still fails, set an absolute `path` in the
+ignored `config/assistant.local.json`.
+
+**Volume unavailable:** confirm the Windows Audio service is running and the default
+media-output device is active. This setting is independent of Sebastian's TTS device.
+
+**GPU status unavailable:** verify the NVIDIA driver is installed and `nvidia-smi`
+runs in PowerShell. Other PC controls continue working without NVIDIA monitoring.
+
+**Screenshot unavailable:** run the assistant in your signed-in interactive Windows
+desktop session. Screen capture is unavailable from a locked or noninteractive
+session.
+
 ## Repository and Privacy
 
 `.gitignore` excludes:
@@ -761,6 +869,7 @@ Weather, time, and local reminders continue working when Google is unavailable.
 - `config/*.local.json`, local `.env` files, tokens, private keys, credentials,
   and secret directories
 - Local SQLite databases and their journal/WAL files under `data/`
+- Local screenshots under `data/screenshots/`
 
 Do not use `git add -f` for local config, credentials, recordings, or model files.
 Before committing, inspect both normal and ignored files:
@@ -780,6 +889,7 @@ config/                  Shared defaults plus ignored local overrides
 data/voices/             Downloaded Piper voices (ignored)
 data/wake_words/         Bundled Sebastian model; other wake models ignored
 data/reminders.sqlite3   Persistent local reminders (ignored)
+data/screenshots/        Local timestamped screenshots (ignored)
 docs/                    Training notes
 outputs/                 Generated recordings and speech (ignored)
 tests/                   Deterministic automated tests
