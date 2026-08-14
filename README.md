@@ -1,6 +1,10 @@
-# Sebastian Voice Assistant
+# S.E.B.A.S.T.I.A.N.
 
-Sebastian is a local-first voice assistant for Windows 10. It uses separately
+**Smart Environment-Based Assistant System for Tasks, Information, Automation &
+Navigation**
+
+S.E.B.A.S.T.I.A.N., spoken as Sebastian, is a local-first voice assistant for
+Windows 10. It uses separately
 configured microphone and speaker devices, listens for a custom wake word, stops
 recording when speech ends, and runs speech recognition, conversation, and speech
 synthesis locally.
@@ -408,7 +412,7 @@ The limits are configurable under `gmail` in `config/assistant.json`:
 8. Download the client JSON. Create the private destination directory in PowerShell:
 
 ```powershell
-cd "$HOME\Desktop\projects\voice-assistant"
+cd "$HOME\Desktop\projects\S.E.B.A.S.T.I.A.N"
 New-Item -ItemType Directory -Path .\secrets\google -Force
 ```
 
@@ -416,7 +420,7 @@ New-Item -ItemType Directory -Path .\secrets\google -Force
    `client_secret.json`, and confirm the final path is exactly:
 
 ```text
-%USERPROFILE%\Desktop\projects\voice-assistant\secrets\google\client_secret.json
+%USERPROFILE%\Desktop\projects\S.E.B.A.S.T.I.A.N\secrets\google\client_secret.json
 ```
 
 If Windows hides filename extensions, verify that the file was not accidentally
@@ -431,7 +435,7 @@ The command must print `True`.
 10. Authorize both services:
 
 ```powershell
-cd "$HOME\Desktop\projects\voice-assistant"
+cd "$HOME\Desktop\projects\S.E.B.A.S.T.I.A.N"
 .\.venv\Scripts\python.exe .\tools\authenticate_google.py --service all
 ```
 
@@ -475,7 +479,7 @@ private installation in Testing, fix the test-user configuration instead:
 5. Wait about one minute, then rerun:
 
 ```powershell
-cd "$HOME\Desktop\projects\voice-assistant"
+cd "$HOME\Desktop\projects\S.E.B.A.S.T.I.A.N"
 .\.venv\Scripts\python.exe .\tools\authenticate_google.py --service all
 ```
 
