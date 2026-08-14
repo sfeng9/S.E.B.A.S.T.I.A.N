@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -167,6 +168,29 @@ class PcControlConfig:
 
 
 @dataclass(frozen=True)
+class HomeAssistantEntityConfig:
+    identifier: str
+    entity_id: str
+    aliases: tuple[str, ...]
+    room: str | None
+    allow_control: bool
+
+
+@dataclass(frozen=True)
+class HomeAssistantConfig:
+    enabled: bool
+    url: str | None
+    token_env_var: str
+    token_path: Path
+    timeout_seconds: float
+    default_room: str | None
+    max_results: int
+    brightness_step_percent: int
+    color_temperature_step_kelvin: int
+    entities: tuple[HomeAssistantEntityConfig, ...]
+
+
+@dataclass(frozen=True)
 class AssistantConfig:
     llm: LlmConfig
     speech_to_text: SpeechToTextConfig
@@ -183,6 +207,7 @@ class AssistantConfig:
     gmail: GmailConfig
     reminders: ReminderConfig
     pc_control: PcControlConfig
+    home_assistant: HomeAssistantConfig
 
 
 def _endpoint_from_dict(data: dict[str, Any], default_rate: int) -> AudioEndpointConfig:
@@ -221,6 +246,7 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
     gmail = raw.get("gmail", {})
     reminders = raw.get("reminders", {})
     pc_control = raw.get("pc_control", {})
+    home_assistant = raw.get("home_assistant", {})
     tts_model_path = Path(
         str(text_to_speech.get("model_path", "data/voices/en_US-ryan-medium.onnx"))
     )
@@ -413,6 +439,48 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
             ),
             applications=_applications_from_config(pc_control.get("applications")),
         ),
+        home_assistant=HomeAssistantConfig(
+            enabled=bool(home_assistant.get("enabled", False)),
+            url=_optional_string(home_assistant.get("url")),
+            token_env_var=str(
+                home_assistant.get("token_env_var", "HOME_ASSISTANT_TOKEN")
+            ).strip()
+            or "HOME_ASSISTANT_TOKEN",
+            token_path=_project_path(
+                home_assistant.get(
+                    "token_path", "secrets/home_assistant/token.txt"
+                )
+            ),
+            timeout_seconds=max(
+                1.0,
+                min(30.0, float(home_assistant.get("timeout_seconds", 5.0))),
+            ),
+            default_room=_optional_string(home_assistant.get("default_room")),
+            max_results=max(
+                1, min(20, int(home_assistant.get("max_results", 10)))
+            ),
+            brightness_step_percent=max(
+                1,
+                min(
+                    100,
+                    int(home_assistant.get("brightness_step_percent", 10)),
+                ),
+            ),
+            color_temperature_step_kelvin=max(
+                100,
+                min(
+                    2000,
+                    int(
+                        home_assistant.get(
+                            "color_temperature_step_kelvin", 500
+                        )
+                    ),
+                ),
+            ),
+            entities=_home_assistant_entities_from_config(
+                home_assistant.get("entities")
+            ),
+        ),
     )
 
 
@@ -473,6 +541,61 @@ def _string_tuple(value: Any, fallback: tuple[str, ...] = ()) -> tuple[str, ...]
         raise ValueError("Application name collections must be JSON arrays.")
     result = tuple(str(item).strip() for item in value if str(item).strip())
     return result or fallback
+
+
+def _home_assistant_entities_from_config(
+    value: Any,
+) -> tuple[HomeAssistantEntityConfig, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("home_assistant.entities must be a JSON array.")
+
+    entities: list[HomeAssistantEntityConfig] = []
+    identifiers: set[str] = set()
+    entity_ids: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("Each Home Assistant entity must be a JSON object.")
+        identifier = str(item.get("id", "")).strip().casefold()
+        entity_id = str(item.get("entity_id", "")).strip().casefold()
+        if not identifier or not identifier.replace("_", "").isalnum():
+            raise ValueError(f"Invalid Home Assistant entity id: {identifier!r}")
+        if not re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z0-9_]+", entity_id):
+            raise ValueError(f"Invalid Home Assistant entity_id: {entity_id!r}")
+        domain = entity_id.split(".", 1)[0]
+        if domain not in {
+            "light",
+            "switch",
+            "fan",
+            "sensor",
+            "binary_sensor",
+            "climate",
+            "scene",
+        }:
+            raise ValueError(
+                f"Home Assistant domain is disabled for safety: {domain!r}"
+            )
+        if identifier in identifiers:
+            raise ValueError(f"Duplicate Home Assistant registry id: {identifier}")
+        if entity_id in entity_ids:
+            raise ValueError(f"Duplicate Home Assistant entity_id: {entity_id}")
+        identifiers.add(identifier)
+        entity_ids.add(entity_id)
+        aliases = _string_tuple(
+            item.get("aliases"),
+            fallback=(identifier.replace("_", " "),),
+        )
+        entities.append(
+            HomeAssistantEntityConfig(
+                identifier=identifier,
+                entity_id=entity_id,
+                aliases=aliases,
+                room=_optional_string(item.get("room")),
+                allow_control=bool(item.get("allow_control", True)),
+            )
+        )
+    return tuple(entities)
 
 
 _DEFAULT_APPLICATIONS = [

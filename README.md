@@ -23,6 +23,7 @@ Current features:
 - Free live web search through DuckDuckGo without an API key
 - Gmail reading, Google Calendar management, and automatic pre-event reminders
 - Allowlisted Windows application, volume, media, screenshot, and lock controls
+- Safe Home Assistant device state, light, switch, fan, thermostat, and scene tools
 - On-demand CPU, RAM, disk, process, NVIDIA GPU, temperature, and VRAM status
 - Expiring confirmation for shutdown, restart, logout, sleep, hibernate, and force close
 - Idle GPU model release for long-running wake-word operation
@@ -37,6 +38,7 @@ Current features:
 - An NVIDIA GPU for the default Faster Whisper settings, or use the CPU settings
   in [CPU Speech Recognition](#cpu-speech-recognition)
 - Internet access for initial package/model downloads, live weather, and web search
+- Optional: a Home Assistant server on the local network for smart-home control
 
 All normal assistant processing is local. Weather and explicit place-name lookup
 call Open-Meteo; home time/date uses the configured timezone without a network call.
@@ -65,7 +67,7 @@ Committed files under `config/` contain shareable defaults and placeholders.
 Machine-specific values belong in these ignored files:
 
 - `config/devices.local.json`: microphone and speaker
-- `config/assistant.local.json`: location and optional model overrides
+- `config/assistant.local.json`: location, integrations, and optional model overrides
 
 Local files are recursively merged over their matching base files. This keeps
 personal settings out of Git while allowing the shared defaults to evolve.
@@ -738,7 +740,168 @@ state, or cycle an app only when it was initially closed:
 The app cycle never force-closes an app. Automated tests mock lock and power actions,
 so they cannot lock, sleep, restart, or shut down the development computer.
 
-## 13. Run Sebastian
+## 13. Connect Home Assistant
+
+Sebastian connects to Home Assistant's REST API only when a smart-home tool is
+requested. There is no background polling, and no extra Python dependency is needed.
+
+### Find the server URL
+
+Open Home Assistant in a browser and copy the origin from the address bar, normally:
+
+```text
+http://homeassistant.local:8123
+```
+
+If that hostname does not resolve from the Sebastian PC, open Home Assistant's
+**Settings > System > Network** page and use its local IPv4 address instead, for
+example `http://192.168.1.50:8123`. Do not put a username, password, or token in the
+URL.
+
+### Create and store a Long-Lived Access Token
+
+1. In Home Assistant, select your user profile at the bottom of the sidebar.
+2. Open the **Security** tab.
+3. Under **Long-Lived Access Tokens**, select **Create Token**.
+4. Name it `Sebastian`, create it, and record the token when Home Assistant displays
+   it. Home Assistant will not display it again.
+
+Store the token in the current PowerShell session without adding it to any file:
+
+```powershell
+$env:HOME_ASSISTANT_TOKEN = "PASTE YOUR TOKEN HERE"
+```
+
+To use a local file instead, create `secrets/home_assistant/token.txt` containing
+only the token. The environment variable takes precedence. `.env`, `secrets/`, and
+`config/*.local.json` are ignored by Git, and Sebastian never logs the token or its
+authorization header. Do not commit or paste the token into `assistant.json`.
+
+### Enable the connection and discover the Feit bulb
+
+Add the connection to the ignored `config/assistant.local.json`. Start with an empty
+entity registry:
+
+```json
+{
+  "home_assistant": {
+    "enabled": true,
+    "url": "http://homeassistant.local:8123",
+    "default_room": "bedroom",
+    "entities": []
+  }
+}
+```
+
+Test authentication and list only light entities:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --domain light
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --domain light --query feit
+```
+
+Home Assistant entity IDs are visible under **Settings > Devices & services >
+Entities**. Filter by `light`, the Feit integration, or the bulb's friendly name.
+Sebastian does not communicate directly with Feit: the path is Sebastian to Home
+Assistant, then Home Assistant's Feit, Tuya, or other device integration, then the
+bulb.
+
+After identifying the entity ID, add it to the registry:
+
+```json
+{
+  "home_assistant": {
+    "enabled": true,
+    "url": "http://homeassistant.local:8123",
+    "default_room": "bedroom",
+    "entities": [
+      {
+        "id": "bedroom_light",
+        "entity_id": "light.bedroom_lamp",
+        "aliases": ["bedroom light", "room light", "lamp"],
+        "room": "bedroom",
+        "allow_control": true
+      }
+    ]
+  }
+}
+```
+
+Use a unique lowercase `id` for each entry. `entity_id` must exactly match Home
+Assistant. Aliases are the phrases Sebastian may hear. `room` supports generic
+requests in the configured default room. Set `allow_control` to `false` for a
+read-only sensor or any entity you do not want Sebastian to change.
+
+### Test the bulb
+
+Read state first, then perform explicit control tests only when it is safe to do so:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity light.bedroom_lamp
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity light.bedroom_lamp --turn-on
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity light.bedroom_lamp --brightness 50
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity light.bedroom_lamp --color blue
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity light.bedroom_lamp --color-temperature 2700
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity light.bedroom_lamp --turn-off
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity scene.goodnight --activate-scene
+```
+
+Color and color-temperature tests return a normal unsupported-capability message if
+the bulb does not provide that feature. Restart Sebastian after changing the entity
+registry, then try:
+
+```text
+Sebastian, turn the bedroom light on.
+Set it to 30 percent.
+Is it on?
+Make it warmer.
+Turn it off.
+```
+
+### Add a Goodnight scene
+
+In Home Assistant, go to **Settings > Automations & scenes > Scenes**, select
+**Add scene**, and name it `Goodnight`. Add the desired lights, set each one to its
+off state, and save the scene. Confirm its entity ID under **Settings > Devices &
+services > Entities**; it is normally `scene.goodnight`.
+
+Register that scene as another entry in the ignored
+`config/assistant.local.json` entity list:
+
+```json
+{
+  "id": "goodnight",
+  "entity_id": "scene.goodnight",
+  "aliases": ["goodnight", "goodnight mode", "bedtime mode"],
+  "room": null,
+  "allow_control": true
+}
+```
+
+Test the Home Assistant scene directly:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --entity scene.goodnight --activate-scene
+```
+
+After restarting Sebastian, both `Goodnight` and the common speech transcription
+`Good night` activate the configured scene. Sebastian says `Goodnight.` only after
+the Home Assistant scene tool succeeds.
+
+Supported configured domains are `light`, `switch`, `fan`, `sensor`,
+`binary_sensor`, `climate`, and `scene`. State and sensor queries always fetch live
+data. Ordinary on/off actions, bounded brightness/color changes, thermostat targets,
+and configured scenes are safe actions. Multiple alias matches produce a clarification
+instead of a guess. `turn off all lights` targets only configured lights whose
+`allow_control` is true.
+
+There is no generic service-call tool. Locks, covers and garage doors, alarm control
+panels, and other sensitive domains cannot be registered or exposed. Email, webpages,
+Calendar descriptions, and documents are treated as data and cannot authorize a
+Home Assistant action. Failed connections, authentication, missing entities, and
+malformed responses produce a short spoken error without stopping the voice loop.
+
+## 14. Run Sebastian
 
 Test a push-to-talk conversation before enabling the wake word:
 
@@ -765,9 +928,9 @@ stop. Useful variants:
 Try: "What time is it?", "What's today's date?", "What's it like outside?",
 "What's the latest news about NVIDIA?", "What's my plan today?", "Any important
 emails?", "Open Spotify", "Set the volume to 30 percent", "What's my GPU
-temperature?", or "Remind me in two minutes."
+temperature?", "Turn the bedroom light on", or "Remind me in two minutes."
 
-## 14. Tests
+## 15. Tests
 
 Run deterministic tests without a microphone, Ollama, or internet connection:
 
@@ -780,6 +943,7 @@ Run deterministic tests without a microphone, Ollama, or internet connection:
 .\.venv\Scripts\python.exe .\tools\test_google_failure_routing.py
 .\.venv\Scripts\python.exe .\tools\test_pc_control.py
 .\.venv\Scripts\python.exe .\tools\test_pc_assistant.py
+.\.venv\Scripts\python.exe .\tools\test_home_assistant.py --domain light
 ```
 
 The deterministic suite covers configuration merging, time/date data, weather
@@ -791,6 +955,10 @@ load/unload/reload. PC tests cover the allowlist, permission metadata, argument
 validation, app/volume/media/status routing, expiring confirmations, dry-run power
 safety, and external-content isolation. The web diagnostic requires internet access. Live Gmail and
 Calendar tests require your OAuth setup.
+Home Assistant tests mock the REST server and cover authentication, discovery,
+service payloads, aliases, ambiguity, follow-ups, bounded values, offline behavior,
+unsupported capabilities, and prompt-injection isolation. The Home Assistant
+diagnostic uses your configured local server and token.
 The Google failure diagnostic refuses to run after either real token file exists.
 
 To watch VRAM manually, open a second PowerShell window while Sebastian runs:
@@ -858,6 +1026,11 @@ runs in PowerShell. Other PC controls continue working without NVIDIA monitoring
 desktop session. Screen capture is unavailable from a locked or noninteractive
 session.
 
+**Home Assistant unavailable:** verify its local URL is reachable from this PC and
+that `HOME_ASSISTANT_TOKEN` is set in the same PowerShell window. A 401 or 403 means
+the long-lived token is missing, expired, revoked, or from a user without access.
+Rerun `tools/test_home_assistant.py --domain light` after correcting it.
+
 ## Repository and Privacy
 
 `.gitignore` excludes:
@@ -896,6 +1069,6 @@ tests/                   Deterministic automated tests
 tools/                   Setup, diagnostics, and runnable entry points
 voice_assistant/audio/   Audio devices, STT, TTS, wake word, end-of-speech
 voice_assistant/assistant/ Conversation and tool-calling loop
-voice_assistant/integrations/ External services such as Open-Meteo and web search
+voice_assistant/integrations/ External services such as Open-Meteo, web search, and Home Assistant
 voice_assistant/tools/   Local assistant tools such as time and date
 ```

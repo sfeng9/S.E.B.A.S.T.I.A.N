@@ -5,9 +5,9 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import Any, Protocol
 
+from voice_assistant.assistant.tool_permissions import ToolPermission
 from voice_assistant.config import ApplicationConfig, AssistantConfig
 from voice_assistant.integrations.pc_control import (
     POWER_ACTIONS,
@@ -20,13 +20,6 @@ from voice_assistant.integrations.pc_control import (
 
 
 logger = logging.getLogger(__name__)
-
-
-class ToolPermission(str, Enum):
-    READ_ONLY = "read_only"
-    SAFE_ACTION = "safe_action"
-    CONFIRM_REQUIRED = "confirm_required"
-    DISABLED = "disabled"
 
 
 TOOL_PERMISSIONS: Mapping[str, ToolPermission] = {

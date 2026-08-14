@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from voice_assistant.assistant.productivity_tools import ProductivityToolHandler
 from voice_assistant.assistant.pc_control_tools import PcControlToolHandler
+from voice_assistant.assistant.home_assistant_tools import HomeAssistantToolHandler
 from voice_assistant.config import AssistantConfig
 from voice_assistant.integrations.location import (
     LocationAmbiguousError,
@@ -184,6 +185,7 @@ class AssistantToolRouter:
         productivity: ProductivityToolHandler | None = None,
         search_provider: SearchProvider | None = None,
         pc_control: PcControlToolHandler | None = None,
+        home_assistant: HomeAssistantToolHandler | None = None,
     ) -> None:
         self._locations = location_resolver or LocationResolver(
             config.home_location,
@@ -199,6 +201,7 @@ class AssistantToolRouter:
             config,
             now_provider=self._now_provider,
         )
+        self._home_assistant = home_assistant or HomeAssistantToolHandler(config)
         self._web_search_config = config.web_search
         self._search = (
             search_provider
@@ -224,6 +227,7 @@ class AssistantToolRouter:
             *TOOL_SCHEMAS,
             *self._productivity.schemas,
             *self._pc_control.schemas,
+            *self._home_assistant.schemas,
             *web_schemas,
         )
 
@@ -239,6 +243,26 @@ class AssistantToolRouter:
         selected = list(TOOL_SCHEMAS)
         productivity = list(self._productivity.schemas)
         pc_tools = list(self._pc_control.schemas)
+        home_assistant_tools = list(self._home_assistant.schemas)
+        home_assistant_requirement = self._home_assistant.tool_requirement(prompt, history)
+        home_assistant_required_names = {
+            str(name)
+            for name in (
+                home_assistant_requirement.get("tools", ())
+                if isinstance(home_assistant_requirement, dict)
+                else ()
+            )
+        }
+        if home_assistant_required_names:
+            selected.extend(
+                item for item in home_assistant_tools
+                if item["function"]["name"] in home_assistant_required_names
+            )
+            logger.debug(
+                "Restricting Home Assistant tools to required action: %s",
+                ", ".join(sorted(home_assistant_required_names)),
+            )
+            return tuple(selected)
         pc_requirement = self._pc_control.tool_requirement(prompt, history)
         pc_required_names = {
             str(name)
@@ -318,6 +342,7 @@ class AssistantToolRouter:
     def reset_session_context(self) -> None:
         self._productivity.reset_session_context()
         self._pc_control.reset_session_context()
+        self._home_assistant.reset_session_context()
         self._latest_web_sources.clear()
         self._source_spoken_override = None
         self._current_prompt = ""
@@ -326,6 +351,7 @@ class AssistantToolRouter:
     def begin_turn(self) -> None:
         self._productivity.begin_turn()
         self._pc_control.begin_turn()
+        self._home_assistant.begin_turn()
         self._source_spoken_override = None
 
     def preprocess_tool_call(
@@ -360,6 +386,9 @@ class AssistantToolRouter:
         pc_requirement = self._pc_control.tool_requirement(prompt, history)
         if pc_requirement is not None:
             return pc_requirement
+        home_assistant_requirement = self._home_assistant.tool_requirement(prompt, history)
+        if home_assistant_requirement is not None:
+            return home_assistant_requirement
         productivity_requirement = self._productivity.tool_requirement(prompt, history)
         if productivity_requirement is not None:
             return productivity_requirement
@@ -390,6 +419,9 @@ class AssistantToolRouter:
         pc_override = self._pc_control.spoken_override_for(called_tools)
         if pc_override:
             return pc_override
+        home_assistant_override = self._home_assistant.spoken_override_for(called_tools)
+        if home_assistant_override:
+            return home_assistant_override
         if "get_last_web_sources" in called_tools:
             return self._source_spoken_override
         return None
@@ -409,6 +441,9 @@ class AssistantToolRouter:
                 return self._web_search(arguments)
             if name == "get_last_web_sources":
                 return self._get_last_web_sources()
+            home_assistant_result = self._home_assistant.execute(name, arguments)
+            if home_assistant_result is not None:
+                return home_assistant_result
             pc_result = self._pc_control.execute(name, arguments)
             if pc_result is not None:
                 if pc_result.get("confirmation_required"):

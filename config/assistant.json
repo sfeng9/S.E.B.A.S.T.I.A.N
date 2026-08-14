@@ -132,5 +132,17 @@
         "path": null
       }
     ]
+  },
+  "home_assistant": {
+    "enabled": false,
+    "url": null,
+    "token_env_var": "HOME_ASSISTANT_TOKEN",
+    "token_path": "secrets/home_assistant/token.txt",
+    "timeout_seconds": 5,
+    "default_room": null,
+    "max_results": 10,
+    "brightness_step_percent": 10,
+    "color_temperature_step_kelvin": 500,
+    "entities": []
   }
 }
