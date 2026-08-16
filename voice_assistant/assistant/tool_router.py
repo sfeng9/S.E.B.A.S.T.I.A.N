@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from voice_assistant.assistant.productivity_tools import ProductivityToolHandler
+from voice_assistant.assistant.personal_data_tools import PersonalDataToolHandler
 from voice_assistant.assistant.pc_control_tools import PcControlToolHandler
 from voice_assistant.assistant.home_assistant_tools import HomeAssistantToolHandler
 from voice_assistant.config import AssistantConfig
@@ -79,7 +80,8 @@ SOURCE_FOLLOW_UP = re.compile(
     re.IGNORECASE,
 )
 PRIVATE_TOOL_CUE = re.compile(
-    r"\b(?:emails?|mails?|inbox|calendar|schedule|appointment|meeting|reminders?)\b",
+    r"\b(?:emails?|mails?|inbox|calendar|schedule|appointment|meeting|reminders?|"
+    r"notes?|tasks?|to[ -]?do|lists?|grocer(?:y|ies)|shopping|packing|remember)\b",
     re.IGNORECASE,
 )
 DEDICATED_TOOL_CUE = re.compile(
@@ -183,6 +185,7 @@ class AssistantToolRouter:
         location_resolver: Resolver | None = None,
         now_provider: Callable[[], datetime] | None = None,
         productivity: ProductivityToolHandler | None = None,
+        personal_data: PersonalDataToolHandler | None = None,
         search_provider: SearchProvider | None = None,
         pc_control: PcControlToolHandler | None = None,
         home_assistant: HomeAssistantToolHandler | None = None,
@@ -195,6 +198,11 @@ class AssistantToolRouter:
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._productivity = productivity or ProductivityToolHandler(
             config,
+            now_provider=self._now_provider,
+        )
+        self._personal_data = personal_data or PersonalDataToolHandler(
+            config,
+            reminder_store=self._productivity.reminder_store,
             now_provider=self._now_provider,
         )
         self._pc_control = pc_control or PcControlToolHandler(
@@ -225,6 +233,7 @@ class AssistantToolRouter:
         )
         return (
             *TOOL_SCHEMAS,
+            *self._personal_data.schemas,
             *self._productivity.schemas,
             *self._pc_control.schemas,
             *self._home_assistant.schemas,
@@ -241,9 +250,29 @@ class AssistantToolRouter:
             [*(str(item.get("content", "")) for item in history[-4:]), prompt]
         ).casefold()
         selected = list(TOOL_SCHEMAS)
+        personal_data_tools = list(self._personal_data.schemas_for(prompt, history))
         productivity = list(self._productivity.schemas)
         pc_tools = list(self._pc_control.schemas)
         home_assistant_tools = list(self._home_assistant.schemas)
+        personal_data_requirement = self._personal_data.tool_requirement(prompt, history)
+        personal_data_required_names = {
+            str(name)
+            for name in (
+                personal_data_requirement.get("tools", ())
+                if isinstance(personal_data_requirement, dict)
+                else ()
+            )
+        }
+        if personal_data_required_names:
+            selected.extend(
+                item for item in personal_data_tools
+                if item["function"]["name"] in personal_data_required_names
+            )
+            logger.debug(
+                "Restricting personal-data tools to current request: %s",
+                ", ".join(sorted(personal_data_required_names)),
+            )
+            return tuple(selected)
         home_assistant_requirement = self._home_assistant.tool_requirement(prompt, history)
         home_assistant_required_names = {
             str(name)
@@ -341,6 +370,7 @@ class AssistantToolRouter:
 
     def reset_session_context(self) -> None:
         self._productivity.reset_session_context()
+        self._personal_data.reset_session_context()
         self._pc_control.reset_session_context()
         self._home_assistant.reset_session_context()
         self._latest_web_sources.clear()
@@ -350,6 +380,7 @@ class AssistantToolRouter:
 
     def begin_turn(self) -> None:
         self._productivity.begin_turn()
+        self._personal_data.begin_turn()
         self._pc_control.begin_turn()
         self._home_assistant.begin_turn()
         self._source_spoken_override = None
@@ -376,6 +407,8 @@ class AssistantToolRouter:
             return "confirm_pc_action", {"confirm": confirmed}
         if self._productivity.has_pending_confirmation:
             return "confirm_calendar_action", {"confirm": confirmed}
+        if self._personal_data.has_pending_confirmation:
+            return "confirm_personal_data_action", {"confirm": confirmed}
         return None
 
     def tool_requirement(
@@ -383,6 +416,9 @@ class AssistantToolRouter:
         prompt: str,
         history: Sequence[dict[str, Any]],
     ) -> dict[str, object] | None:
+        personal_data_requirement = self._personal_data.tool_requirement(prompt, history)
+        if personal_data_requirement is not None:
+            return personal_data_requirement
         pc_requirement = self._pc_control.tool_requirement(prompt, history)
         if pc_requirement is not None:
             return pc_requirement
@@ -416,6 +452,9 @@ class AssistantToolRouter:
         productivity_override = self._productivity.spoken_override_for(called_tools)
         if productivity_override:
             return productivity_override
+        personal_data_override = self._personal_data.spoken_override_for(called_tools)
+        if personal_data_override:
+            return personal_data_override
         pc_override = self._pc_control.spoken_override_for(called_tools)
         if pc_override:
             return pc_override
@@ -441,6 +480,12 @@ class AssistantToolRouter:
                 return self._web_search(arguments)
             if name == "get_last_web_sources":
                 return self._get_last_web_sources()
+            personal_data_result = self._personal_data.execute(name, arguments)
+            if personal_data_result is not None:
+                if personal_data_result.get("confirmation_required"):
+                    self._pc_control.clear_pending_confirmation()
+                    self._productivity.clear_pending_confirmation()
+                return personal_data_result
             home_assistant_result = self._home_assistant.execute(name, arguments)
             if home_assistant_result is not None:
                 return home_assistant_result
@@ -448,11 +493,13 @@ class AssistantToolRouter:
             if pc_result is not None:
                 if pc_result.get("confirmation_required"):
                     self._productivity.clear_pending_confirmation()
+                    self._personal_data.clear_pending_confirmation()
                 return pc_result
             productivity_result = self._productivity.execute(name, arguments)
             if productivity_result is not None:
                 if productivity_result.get("confirmation_required"):
                     self._pc_control.clear_pending_confirmation()
+                    self._personal_data.clear_pending_confirmation()
                 return productivity_result
         except LocationError as exc:
             return self._location_error(exc)

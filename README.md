@@ -22,6 +22,7 @@ Current features:
 - Current conditions plus seven-day forecasts from Open-Meteo without an API key
 - Free live web search through DuckDuckGo without an API key
 - Gmail reading, Google Calendar management, and automatic pre-event reminders
+- Persistent local notes, tasks, due dates, and named lists
 - Allowlisted Windows application, volume, media, screenshot, and lock controls
 - Safe Home Assistant device state, light, switch, fan, thermostat, and scene tools
 - On-demand CPU, RAM, disk, process, NVIDIA GPU, temperature, and VRAM status
@@ -901,7 +902,91 @@ Calendar descriptions, and documents are treated as data and cannot authorize a
 Home Assistant action. Failed connections, authentication, missing entities, and
 malformed responses produce a short spoken error without stopping the voice loop.
 
-## 14. Run Sebastian
+## 14. Persistent Notes, Tasks, and Lists
+
+Sebastian stores explicit personal notes, tasks, and named lists in a local SQLite
+database. This data survives session expiration, Ollama unloads, Sebastian restarts,
+and Windows restarts. It is separate from temporary conversation history and is not
+sent to web search or synchronized to a third party.
+
+The database is a normal local SQLite file, not encrypted storage. Protect your
+Windows account and backups, and do not save passwords, API tokens, recovery codes,
+or other credentials as notes.
+
+The default database is:
+
+```text
+data/sebastian.db
+```
+
+It is created on first use and ignored by Git. To use another predictable location,
+add this to the ignored `config/assistant.local.json`:
+
+```json
+{
+  "personal_data": {
+    "database_path": "data/sebastian.db",
+    "search_result_limit": 8,
+    "spoken_item_limit": 5
+  }
+}
+```
+
+Example voice requests:
+
+```text
+"Remember that my air filter size is 16 by 20."
+"What did I tell you about my air filter?"
+"Add finish CSC homework to my tasks."
+"Add test assignment due tomorrow at 5 PM."
+"What do I need to do today?"
+"Mark the homework task done."
+"Create a grocery list."
+"Add milk, eggs, chicken, and rice to my grocery list."
+"What's on my grocery list?"
+"Cross milk off."
+"Remove the eggs."
+"Undo that."
+```
+
+Notes are saved only after explicit wording such as `remember`, `save`, or `take a
+note`; normal conversation is not silently persisted. Tasks support pending and
+completed states, optional priorities, and timezone-aware due dates. A due date does
+not create a spoken alert unless the same request explicitly asks for a reminder.
+That optional alert uses the existing local reminder system instead of a second
+scheduler.
+
+List item matching is case-insensitive. Adding `milk` when unchecked milk already
+exists reports that it is already present; adding it after it was crossed off checks
+it back in rather than creating a duplicate. Recent result IDs support follow-ups
+such as `Remove the eggs` or `Mark the first one done`. These references and one
+lightweight undo action expire with the conversation session, but saved records do
+not.
+
+Sebastian refuses to change an ambiguous match and names a few candidates for
+clarification. Deleting one clearly identified note, task, or list item is direct.
+Clearing a whole list, deleting a whole list, or deleting all completed tasks requires
+a separate `Yes` confirmation before any records are removed.
+
+Run the isolated diagnostic; it uses a temporary database and never changes your
+real personal data:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_personal_data.py
+```
+
+With Ollama running, verify natural-language tool selection as well:
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\test_personal_data_assistant.py
+```
+
+To back up your data, stop Sebastian and copy `data/sebastian.db` to a private backup
+location. Restore it only while Sebastian is stopped. If SQLite journal files ending
+in `-wal` or `-shm` are present, keep them with the database or close Sebastian before
+copying so all changes are consolidated.
+
+## 15. Run Sebastian
 
 Test a push-to-talk conversation before enabling the wake word:
 
@@ -928,9 +1013,10 @@ stop. Useful variants:
 Try: "What time is it?", "What's today's date?", "What's it like outside?",
 "What's the latest news about NVIDIA?", "What's my plan today?", "Any important
 emails?", "Open Spotify", "Set the volume to 30 percent", "What's my GPU
-temperature?", "Turn the bedroom light on", or "Remind me in two minutes."
+temperature?", "Turn the bedroom light on", "Add milk to my grocery list", or
+"Remind me in two minutes."
 
-## 15. Tests
+## 16. Tests
 
 Run deterministic tests without a microphone, Ollama, or internet connection:
 
@@ -944,6 +1030,8 @@ Run deterministic tests without a microphone, Ollama, or internet connection:
 .\.venv\Scripts\python.exe .\tools\test_pc_control.py
 .\.venv\Scripts\python.exe .\tools\test_pc_assistant.py
 .\.venv\Scripts\python.exe .\tools\test_home_assistant.py --domain light
+.\.venv\Scripts\python.exe .\tools\test_personal_data.py
+.\.venv\Scripts\python.exe .\tools\test_personal_data_assistant.py
 ```
 
 The deterministic suite covers configuration merging, time/date data, weather
@@ -959,6 +1047,10 @@ Home Assistant tests mock the REST server and cover authentication, discovery,
 service payloads, aliases, ambiguity, follow-ups, bounded values, offline behavior,
 unsupported capabilities, and prompt-injection isolation. The Home Assistant
 diagnostic uses your configured local server and token.
+Personal-data tests cover schema migration, restart persistence, note CRUD and
+search, timezone-aware task due dates, explicit reminder links, duplicate list
+items, checked items, follow-up references, ambiguity refusal, bulk-delete
+confirmation, undo, and database failures. The diagnostic uses temporary files.
 The Google failure diagnostic refuses to run after either real token file exists.
 
 To watch VRAM manually, open a second PowerShell window while Sebastian runs:
@@ -1031,6 +1123,11 @@ that `HOME_ASSISTANT_TOKEN` is set in the same PowerShell window. A 401 or 403 m
 the long-lived token is missing, expired, revoked, or from a user without access.
 Rerun `tools/test_home_assistant.py --domain light` after correcting it.
 
+**Notes, tasks, or lists unavailable:** verify the parent directory configured by
+`personal_data.database_path` exists or can be created and is writable. Stop other
+programs that may hold an exclusive lock, then rerun `tools/test_personal_data.py`.
+Sebastian reports the failure without stopping the voice loop.
+
 ## Repository and Privacy
 
 `.gitignore` excludes:
@@ -1062,6 +1159,7 @@ config/                  Shared defaults plus ignored local overrides
 data/voices/             Downloaded Piper voices (ignored)
 data/wake_words/         Bundled Sebastian model; other wake models ignored
 data/reminders.sqlite3   Persistent local reminders (ignored)
+data/sebastian.db        Persistent local notes, tasks, and lists (ignored)
 data/screenshots/        Local timestamped screenshots (ignored)
 docs/                    Training notes
 outputs/                 Generated recordings and speech (ignored)

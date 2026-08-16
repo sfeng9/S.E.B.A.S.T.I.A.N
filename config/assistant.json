@@ -92,6 +92,11 @@
     "calendar_sync_lookahead_hours": 168,
     "calendar_sync_max_results": 2500
   },
+  "personal_data": {
+    "database_path": "data/sebastian.db",
+    "search_result_limit": 8,
+    "spoken_item_limit": 5
+  },
   "pc_control": {
     "enabled": true,
     "confirmation_timeout_seconds": 30,

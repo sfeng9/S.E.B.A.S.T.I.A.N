@@ -148,6 +148,13 @@ class ReminderConfig:
 
 
 @dataclass(frozen=True)
+class PersonalDataConfig:
+    database_path: Path
+    search_result_limit: int
+    spoken_item_limit: int
+
+
+@dataclass(frozen=True)
 class ApplicationConfig:
     identifier: str
     aliases: tuple[str, ...]
@@ -206,6 +213,7 @@ class AssistantConfig:
     calendar: CalendarConfig
     gmail: GmailConfig
     reminders: ReminderConfig
+    personal_data: PersonalDataConfig
     pc_control: PcControlConfig
     home_assistant: HomeAssistantConfig
 
@@ -245,6 +253,7 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
     calendar = raw.get("calendar", {})
     gmail = raw.get("gmail", {})
     reminders = raw.get("reminders", {})
+    personal_data = raw.get("personal_data", {})
     pc_control = raw.get("pc_control", {})
     home_assistant = raw.get("home_assistant", {})
     tts_model_path = Path(
@@ -412,6 +421,17 @@ def load_assistant_config(path: Path = DEFAULT_ASSISTANT_CONFIG) -> AssistantCon
                     2500,
                     int(reminders.get("calendar_sync_max_results", 2500)),
                 ),
+            ),
+        ),
+        personal_data=PersonalDataConfig(
+            database_path=_project_path(
+                personal_data.get("database_path", "data/sebastian.db")
+            ),
+            search_result_limit=max(
+                1, min(20, int(personal_data.get("search_result_limit", 8)))
+            ),
+            spoken_item_limit=max(
+                1, min(20, int(personal_data.get("spoken_item_limit", 5)))
             ),
         ),
         pc_control=PcControlConfig(
